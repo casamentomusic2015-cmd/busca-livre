@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Produto, FiltrosBusca, ResultadoBusca } from '@/types/produto';
 import { adicionarBusca } from '@/lib/storage';
+import { buscarDireto } from '@/lib/mlClientSearch';
 
 const DEBOUNCE_MS = 500;
 
@@ -63,12 +64,31 @@ export function useSearch(): UseSearchReturn {
           signal: abortRef.current.signal,
         });
 
-        if (!res.ok) throw new Error(`Erro ${res.status}`);
+        if (res.ok) {
+          const data: ResultadoBusca = await res.json();
+          setResultados(data.produtos);
+          setTotal(data.total);
+          adicionarBusca(termo);
+          return;
+        }
 
-        const data: ResultadoBusca = await res.json();
-        setResultados(data.produtos);
-        setTotal(data.total);
-        adicionarBusca(termo);
+        // Verifica se o erro é bloqueio do ML (IP de servidor)
+        const body = await res.json().catch(() => ({})) as { ml_blocked?: boolean };
+        if (body.ml_blocked) {
+          // Fallback: busca direta do browser (contorna o bloqueio de IP de servidor)
+          const { produtos, total } = await buscarDireto(
+            termo,
+            20,
+            filtrosAtivos,
+            abortRef.current.signal
+          );
+          setResultados(produtos);
+          setTotal(total);
+          adicionarBusca(termo);
+          return;
+        }
+
+        throw new Error(`Erro ${res.status}`);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         setErro(err instanceof Error ? err.message : 'Erro ao buscar produtos');

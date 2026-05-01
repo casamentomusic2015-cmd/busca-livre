@@ -41,9 +41,11 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     const tempoMs = Date.now() - inicio;
-    console.error(`[API /search] ✗ erro após ${tempoMs}ms:`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    const mlBlocked = msg.includes('autorização') || msg.includes('403');
+    console.error(`[API /search] ✗ erro após ${tempoMs}ms (ml_blocked=${mlBlocked}):`, msg);
     return NextResponse.json(
-      { error: 'Erro ao buscar produtos. Tente novamente.' },
+      { error: msg, ml_blocked: mlBlocked },
       { status: 502 }
     );
   }
