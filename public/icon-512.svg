@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#0a0a0a"/>
+  <rect width="512" height="512" rx="80" fill="#FFE600" opacity="0.08"/>
+  <!-- Raio / lightning bolt -->
+  <path d="M290 64 L178 278 H256 L222 448 L360 214 H278 Z" fill="#FFE600"/>
+</svg>
