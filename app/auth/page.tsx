@@ -39,7 +39,7 @@ export default function AuthPage() {
   }
 
   const clientId = '3030608072142858';
-  const redirectUri = baseUrl ? `${baseUrl}/api/auth/callback` : '';
+  const redirectUri = baseUrl ? `${baseUrl}/auth/callback` : '';
   const implicitRedirectUri = baseUrl ? `${baseUrl}/auth/callback` : '';
   const authUrl = redirectUri
     ? `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`

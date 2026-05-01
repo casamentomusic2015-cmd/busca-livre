@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Credenciais ML não configuradas' }, { status: 500 });
   }
 
-  const redirectUri = `${appUrl}/api/auth/callback`;
+  const redirectUri = `${appUrl}/auth/callback`;
 
   try {
     const res = await fetch('https://api.mercadolibre.com/oauth/token', {
