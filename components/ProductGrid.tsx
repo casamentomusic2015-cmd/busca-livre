@@ -46,35 +46,19 @@ export function ProductGrid({ produtos, isLoading, erro, query, onRecarregar }: 
   }
 
   if (erro) {
-    const isAuthError = erro.includes('autorização') || erro.includes('403');
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-center">
         <SearchX className="w-12 h-12 text-texto-muted" aria-hidden="true" />
-        <p className="text-texto font-semibold">
-          {isAuthError ? 'Autorização necessária' : 'Erro ao carregar resultados'}
-        </p>
-        <p className="text-texto-muted text-sm max-w-sm">
-          {isAuthError
-            ? 'A API do Mercado Livre exige um token de usuário para pesquisas.'
-            : erro}
-        </p>
-        {isAuthError ? (
-          <a
-            href="/auth"
-            className="flex items-center gap-2 px-4 py-2 bg-acento text-black font-semibold text-sm rounded-lg hover:bg-acento-hover transition-colors"
-          >
-            Configurar autorização →
-          </a>
-        ) : (
-          <button
-            type="button"
-            onClick={onRecarregar}
-            className="flex items-center gap-2 px-4 py-2 bg-acento text-black font-semibold text-sm rounded-lg hover:bg-acento-hover transition-colors focus-visible:outline-2 focus-visible:outline-acento"
-          >
-            <RefreshCw className="w-4 h-4" aria-hidden="true" />
-            Tentar novamente
-          </button>
-        )}
+        <p className="text-texto font-semibold">Erro ao carregar resultados</p>
+        <p className="text-texto-muted text-sm max-w-sm">{erro}</p>
+        <button
+          type="button"
+          onClick={onRecarregar}
+          className="flex items-center gap-2 px-4 py-2 bg-acento text-black font-semibold text-sm rounded-lg hover:bg-acento-hover transition-colors focus-visible:outline-2 focus-visible:outline-acento"
+        >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
+          Tentar novamente
+        </button>
       </div>
     );
   }

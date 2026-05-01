@@ -53,46 +53,41 @@ export function useSearch(): UseSearchReturn {
       setErro(null);
 
       try {
-        const params = new URLSearchParams({ q: termo, limit: '20' });
-        if (filtrosAtivos.freteGratis) params.set('frete_gratis', 'true');
-        if (filtrosAtivos.precoMin) params.set('min_price', String(filtrosAtivos.precoMin));
-        if (filtrosAtivos.precoMax) params.set('max_price', String(filtrosAtivos.precoMax));
-        if (filtrosAtivos.avaliacaoMinima) params.set('avaliacao_min', String(filtrosAtivos.avaliacaoMinima));
-        params.set('sort', filtrosAtivos.ordenacao);
+        // Busca direta do browser (sem servidor, sem token)
+        const { produtos, total } = await buscarDireto(
+          termo,
+          20,
+          filtrosAtivos,
+          abortRef.current.signal
+        );
+        setResultados(produtos);
+        setTotal(total);
+        adicionarBusca(termo);
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
 
-        const res = await fetch(`/api/search?${params.toString()}`, {
-          signal: abortRef.current.signal,
-        });
+        // Fallback: tenta via /api/search (funciona se usuário configurou token)
+        try {
+          const params = new URLSearchParams({ q: termo, limit: '20' });
+          if (filtrosAtivos.freteGratis) params.set('frete_gratis', 'true');
+          if (filtrosAtivos.precoMin) params.set('min_price', String(filtrosAtivos.precoMin));
+          if (filtrosAtivos.precoMax) params.set('max_price', String(filtrosAtivos.precoMax));
+          if (filtrosAtivos.avaliacaoMinima) params.set('avaliacao_min', String(filtrosAtivos.avaliacaoMinima));
+          params.set('sort', filtrosAtivos.ordenacao);
 
-        if (res.ok) {
+          const res = await fetch(`/api/search?${params.toString()}`, {
+            signal: abortRef.current.signal,
+          });
+          if (!res.ok) throw new Error(`Erro ${res.status}`);
           const data: ResultadoBusca = await res.json();
           setResultados(data.produtos);
           setTotal(data.total);
           adicionarBusca(termo);
-          return;
+        } catch (fallbackErr) {
+          if (fallbackErr instanceof Error && fallbackErr.name === 'AbortError') return;
+          setErro('Erro ao buscar produtos. Tente novamente.');
+          setResultados([]);
         }
-
-        // Verifica se o erro é bloqueio do ML (IP de servidor)
-        const body = await res.json().catch(() => ({})) as { ml_blocked?: boolean };
-        if (body.ml_blocked) {
-          // Fallback: busca direta do browser (contorna o bloqueio de IP de servidor)
-          const { produtos, total } = await buscarDireto(
-            termo,
-            20,
-            filtrosAtivos,
-            abortRef.current.signal
-          );
-          setResultados(produtos);
-          setTotal(total);
-          adicionarBusca(termo);
-          return;
-        }
-
-        throw new Error(`Erro ${res.status}`);
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        setErro(err instanceof Error ? err.message : 'Erro ao buscar produtos');
-        setResultados([]);
       } finally {
         setIsLoading(false);
       }
