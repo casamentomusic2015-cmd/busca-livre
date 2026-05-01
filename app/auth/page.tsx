@@ -1,12 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function AuthPage() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+
+  useEffect(() => {
+    setBaseUrl(window.location.origin);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,10 +39,14 @@ export default function AuthPage() {
   }
 
   const clientId = '3030608072142858';
-  const redirectUri = 'http://localhost:3000/api/auth/callback';
-  const implicitRedirectUri = 'http://localhost:3000/auth/callback';
-  const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-  const implicitAuthUrl = `https://auth.mercadolivre.com.br/authorization?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(implicitRedirectUri)}`;
+  const redirectUri = baseUrl ? `${baseUrl}/api/auth/callback` : '';
+  const implicitRedirectUri = baseUrl ? `${baseUrl}/auth/callback` : '';
+  const authUrl = redirectUri
+    ? `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`
+    : '#';
+  const implicitAuthUrl = implicitRedirectUri
+    ? `https://auth.mercadolivre.com.br/authorization?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(implicitRedirectUri)}`
+    : '#';
 
   return (
     <main className="min-h-screen bg-fundo text-texto p-6 md:p-12">
@@ -179,10 +188,10 @@ export default function AuthPage() {
           )}
 
           <div className="border-t border-borda pt-4">
-            <p className="text-texto-muted text-xs font-semibold mb-2">Como obter um token via curl:</p>
+            <p className="text-texto-muted text-xs font-semibold mb-2">Como obter um token via navegador:</p>
             <pre className="bg-black/40 border border-borda rounded-lg p-3 text-xs text-texto overflow-x-auto whitespace-pre-wrap break-all">
-{`# 1. Abra no navegador (substitua APP_ID):
-https://auth.mercadolivre.com.br/authorization?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}
+{`# 1. Abra esta URL no navegador:
+https://auth.mercadolivre.com.br/authorization?response_type=token&client_id=${clientId}&redirect_uri=${implicitRedirectUri ? encodeURIComponent(implicitRedirectUri) : encodeURIComponent('/auth/callback')}
 
 # 2. Após autorizar, a URL de retorno terá #access_token=APP_USR-...
 # 3. Copie o valor do access_token e cole acima`}
