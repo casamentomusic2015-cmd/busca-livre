@@ -4,6 +4,7 @@ import { setUserToken } from '@/lib/mercadolivre';
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code = searchParams.get('code');
+  const codeVerifier = searchParams.get('code_verifier');
   const error = searchParams.get('error');
 
   if (error || !code) {
@@ -30,24 +31,25 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    console.log('ENVIANDO PARA ML:', {
+    const tokenBody: Record<string, string> = {
       grant_type: 'authorization_code',
       client_id: clientId,
-      client_secret: '***',
+      client_secret: clientSecret,
       code,
       redirect_uri: redirectUri,
+    };
+    if (codeVerifier) tokenBody.code_verifier = codeVerifier;
+
+    console.log('ENVIANDO PARA ML:', {
+      ...tokenBody,
+      client_secret: '***',
+      code_verifier: codeVerifier ? '***' : undefined,
     });
 
     const res = await fetch('https://api.mercadolibre.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
+      body: new URLSearchParams(tokenBody),
       cache: 'no-store',
     });
 

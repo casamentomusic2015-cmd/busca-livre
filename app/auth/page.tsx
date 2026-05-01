@@ -3,6 +3,21 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+function generateCodeVerifier() {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return btoa(String.fromCharCode(...array))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function generateCodeChallenge(verifier: string) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 export default function AuthPage() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -41,12 +56,24 @@ export default function AuthPage() {
   const clientId = '3030608072142858';
   const redirectUri = baseUrl ? `${baseUrl}/auth/callback` : '';
   const implicitRedirectUri = baseUrl ? `${baseUrl}/auth/callback` : '';
-  const authUrl = redirectUri
-    ? `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`
-    : '#';
   const implicitAuthUrl = implicitRedirectUri
     ? `https://auth.mercadolivre.com.br/authorization?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(implicitRedirectUri)}`
     : '#';
+
+  async function handleAuthCodeClick() {
+    if (!redirectUri) return;
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    sessionStorage.setItem('ml_code_verifier', verifier);
+    const url =
+      `https://auth.mercadolivre.com.br/authorization` +
+      `?response_type=code` +
+      `&client_id=${clientId}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&code_challenge=${challenge}` +
+      `&code_challenge_method=S256`;
+    window.location.href = url;
+  }
 
   return (
     <main className="min-h-screen bg-fundo text-texto p-6 md:p-12">
@@ -108,12 +135,13 @@ export default function AuthPage() {
           <div className="bg-black/40 border border-borda rounded px-3 py-2 font-mono text-xs text-acento break-all select-all">
             {redirectUri}
           </div>
-          <a
-            href={authUrl}
-            className="inline-block px-5 py-2.5 bg-surface border border-acento text-acento font-semibold rounded-lg hover:bg-acento/10 transition-colors text-sm"
+          <button
+            onClick={handleAuthCodeClick}
+            disabled={!redirectUri}
+            className="inline-block px-5 py-2.5 bg-surface border border-acento text-acento font-semibold rounded-lg hover:bg-acento/10 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Autorizar (com refresh token) →
-          </a>
+          </button>
           <p className="text-texto-muted text-xs">
             Após autorizar, o terminal mostrará o <code className="bg-black/40 px-1 rounded">ML_REFRESH_TOKEN</code> para salvar no{' '}
             <code className="bg-black/40 px-1 rounded">.env.local</code> — isso faz o token ser renovado automaticamente.

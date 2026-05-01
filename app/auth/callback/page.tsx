@@ -15,7 +15,11 @@ export default function CallbackPage() {
 
     // ── Authorization Code flow: ?code=XXX ───────────────────────────────────
     if (code) {
-      fetch(`/api/auth/callback?code=${encodeURIComponent(code)}`)
+      const codeVerifier = sessionStorage.getItem('ml_code_verifier') ?? '';
+      sessionStorage.removeItem('ml_code_verifier');
+      const params = new URLSearchParams({ code });
+      if (codeVerifier) params.set('code_verifier', codeVerifier);
+      fetch(`/api/auth/callback?${params.toString()}`)
         .then(async (r) => {
           // A rota retorna HTML em caso de sucesso
           if (r.ok) {
