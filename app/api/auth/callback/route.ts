@@ -23,7 +23,21 @@ export async function GET(req: NextRequest) {
 
   const redirectUri = `${appUrl}/auth/callback`;
 
+  console.log('CALLBACK RECEBIDO:', {
+    code: code,
+    redirectUri,
+    appUrl,
+  });
+
   try {
+    console.log('ENVIANDO PARA ML:', {
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      client_secret: '***',
+      code,
+      redirect_uri: redirectUri,
+    });
+
     const res = await fetch('https://api.mercadolibre.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
