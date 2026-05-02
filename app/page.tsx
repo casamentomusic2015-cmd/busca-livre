@@ -15,7 +15,7 @@ import {
 import { Zap } from 'lucide-react';
 
 export default function Home() {
-  const { query, setQuery, buscar, resultados, total, isLoading, erro, filtros, setFiltros, recarregar } =
+  const { query, setQuery, buscar, resultados, total, isLoading, erro, mlBloqueado, filtros, setFiltros, recarregar } =
     useSearch();
   const [mostrarRecentes, setMostrarRecentes] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -101,6 +101,7 @@ export default function Home() {
               produtos={resultados}
               isLoading={isLoading}
               erro={erro}
+              mlBloqueado={mlBloqueado}
               query={query}
               onRecarregar={recarregar}
             />

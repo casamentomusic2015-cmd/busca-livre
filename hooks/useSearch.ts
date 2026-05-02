@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Produto, FiltrosBusca, ResultadoBusca } from '@/types/produto';
 import { adicionarBusca } from '@/lib/storage';
-import { buscarDireto } from '@/lib/mlClientSearch';
 
 const DEBOUNCE_MS = 500;
 
@@ -22,6 +21,7 @@ interface UseSearchReturn {
   total: number;
   isLoading: boolean;
   erro: string | null;
+  mlBloqueado: boolean;
   filtros: FiltrosBusca;
   setFiltros: (f: Partial<FiltrosBusca>) => void;
   buscar: (q: string) => void;
@@ -34,6 +34,7 @@ export function useSearch(): UseSearchReturn {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [mlBloqueado, setMlBloqueado] = useState(false);
   const [filtros, setFiltrosState] = useState<FiltrosBusca>(filtrosIniciais);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -51,43 +52,40 @@ export function useSearch(): UseSearchReturn {
 
       setIsLoading(true);
       setErro(null);
+      setMlBloqueado(false);
 
       try {
-        // Busca direta do browser (sem servidor, sem token)
-        const { produtos, total } = await buscarDireto(
-          termo,
-          20,
-          filtrosAtivos,
-          abortRef.current.signal
-        );
-        setResultados(produtos);
-        setTotal(total);
+        const params = new URLSearchParams({ q: termo, limit: '20' });
+        if (filtrosAtivos.freteGratis) params.set('frete_gratis', 'true');
+        if (filtrosAtivos.precoMin) params.set('min_price', String(filtrosAtivos.precoMin));
+        if (filtrosAtivos.precoMax) params.set('max_price', String(filtrosAtivos.precoMax));
+        if (filtrosAtivos.avaliacaoMinima) params.set('avaliacao_min', String(filtrosAtivos.avaliacaoMinima));
+        params.set('sort', filtrosAtivos.ordenacao);
+
+        const res = await fetch(`/api/search?${params.toString()}`, {
+          signal: abortRef.current.signal,
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string; ml_blocked?: boolean };
+          if (data.ml_blocked) {
+            setMlBloqueado(true);
+            setErro('O Mercado Livre requer autorização para buscar produtos.');
+          } else {
+            setErro('Erro ao buscar produtos. Tente novamente.');
+          }
+          setResultados([]);
+          return;
+        }
+
+        const data: ResultadoBusca = await res.json();
+        setResultados(data.produtos);
+        setTotal(data.total);
         adicionarBusca(termo);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
-
-        // Fallback: tenta via /api/search (funciona se usuário configurou token)
-        try {
-          const params = new URLSearchParams({ q: termo, limit: '20' });
-          if (filtrosAtivos.freteGratis) params.set('frete_gratis', 'true');
-          if (filtrosAtivos.precoMin) params.set('min_price', String(filtrosAtivos.precoMin));
-          if (filtrosAtivos.precoMax) params.set('max_price', String(filtrosAtivos.precoMax));
-          if (filtrosAtivos.avaliacaoMinima) params.set('avaliacao_min', String(filtrosAtivos.avaliacaoMinima));
-          params.set('sort', filtrosAtivos.ordenacao);
-
-          const res = await fetch(`/api/search?${params.toString()}`, {
-            signal: abortRef.current.signal,
-          });
-          if (!res.ok) throw new Error(`Erro ${res.status}`);
-          const data: ResultadoBusca = await res.json();
-          setResultados(data.produtos);
-          setTotal(data.total);
-          adicionarBusca(termo);
-        } catch (fallbackErr) {
-          if (fallbackErr instanceof Error && fallbackErr.name === 'AbortError') return;
-          setErro('Erro ao buscar produtos. Tente novamente.');
-          setResultados([]);
-        }
+        setErro('Erro ao buscar produtos. Tente novamente.');
+        setResultados([]);
       } finally {
         setIsLoading(false);
       }
@@ -137,5 +135,5 @@ export function useSearch(): UseSearchReturn {
     };
   }, []);
 
-  return { query, setQuery, resultados, total, isLoading, erro, filtros, setFiltros, buscar, recarregar };
+  return { query, setQuery, resultados, total, isLoading, erro, mlBloqueado, filtros, setFiltros, buscar, recarregar };
 }

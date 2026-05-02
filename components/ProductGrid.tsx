@@ -5,17 +5,18 @@ import type { Produto } from '@/types/produto';
 import { ProductCard } from '@/components/ProductCard';
 import { PriceComparison } from '@/components/PriceComparison';
 import { SkeletonGrid } from '@/components/SkeletonCard';
-import { SearchX, RefreshCw, WifiOff } from 'lucide-react';
+import { SearchX, RefreshCw, WifiOff, Lock } from 'lucide-react';
 
 interface ProductGridProps {
   produtos: Produto[];
   isLoading: boolean;
   erro: string | null;
+  mlBloqueado?: boolean;
   query: string;
   onRecarregar: () => void;
 }
 
-export function ProductGrid({ produtos, isLoading, erro, query, onRecarregar }: ProductGridProps) {
+export function ProductGrid({ produtos, isLoading, erro, mlBloqueado, query, onRecarregar }: ProductGridProps) {
   const [comparando, setComparando] = useState<Produto | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -46,6 +47,25 @@ export function ProductGrid({ produtos, isLoading, erro, query, onRecarregar }: 
   }
 
   if (erro) {
+    if (mlBloqueado) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <Lock className="w-12 h-12 text-texto-muted" aria-hidden="true" />
+          <p className="text-texto font-semibold">Autorização necessária</p>
+          <p className="text-texto-muted text-sm max-w-sm">
+            O Mercado Livre requer que você autorize o app uma vez para buscar produtos.
+            É rápido e gratuito.
+          </p>
+          <a
+            href="/auth"
+            className="flex items-center gap-2 px-4 py-2 bg-acento text-black font-semibold text-sm rounded-lg hover:bg-acento-hover transition-colors"
+          >
+            Autorizar com Mercado Livre →
+          </a>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-center">
         <SearchX className="w-12 h-12 text-texto-muted" aria-hidden="true" />

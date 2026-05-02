@@ -67,31 +67,14 @@ async function getAccessToken(): Promise<{ token: string; type: 'user' | 'app' }
       tokenCache = { accessToken: data.access_token, expiresAt: Date.now() + data.expires_in * 1000, type: 'user' };
       return { token: data.access_token, type: 'user' };
     }
-    console.warn('[ML Auth] Refresh token inválido ou expirado, tentando client_credentials...');
+    console.warn('[ML Auth] Refresh token inválido ou expirado. Acesse /auth para reautorizar.');
   }
 
-  // 4. Client credentials (app token — funciona para /products/search, não para /sites/MLB/search)
-  console.log('[ML Auth] Obtendo app token via client_credentials...');
-  const res = await fetch(`${ML_BASE_URL}/oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-    cache: 'no-store',
-  });
-
-  const bodyText = await res.text();
-  console.log(`[ML Auth] client_credentials status: ${res.status} | Body início: ${bodyText.slice(0, 120)}`);
-
-  if (!res.ok) throw new Error(`OAuth falhou (${res.status}): ${bodyText.slice(0, 200)}`);
-
-  const data = JSON.parse(bodyText) as { access_token: string; expires_in: number };
-  tokenCache = { accessToken: data.access_token, expiresAt: Date.now() + data.expires_in * 1000, type: 'app' };
-  console.log(`[ML Auth] ✓ App token obtido. Expira em ${data.expires_in}s`);
-  return { token: data.access_token, type: 'app' };
+  // 4. Sem token de usuário disponível — client_credentials não funciona para /sites/MLB/search
+  //    (ML retorna 403 para app tokens neste endpoint). Requer autorização OAuth do usuário.
+  throw new Error(
+    'ML API retornou 403: autorização de usuário necessária. Configure o token em /auth.'
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -198,7 +181,7 @@ export async function buscarProdutos(
   if (!res.ok) {
     if (res.status === 403) {
       throw new Error(
-        'A busca requer autorização do usuário. Acesse http://localhost:3000/auth para configurar o token.'
+        'ML API retornou 403: autorização de usuário necessária. Configure o token em /auth.'
       );
     }
     throw new Error(`ML API erro ${res.status}: ${bodyText.slice(0, 200)}`);
