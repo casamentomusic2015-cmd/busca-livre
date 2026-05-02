@@ -173,15 +173,24 @@ export async function buscarProdutos(
 
   const scraperKey = process.env.SCRAPER_API_KEY;
   const fetchUrl = scraperKey
-    ? `https://api.scraperapi.com?api_key=${scraperKey}&url=${encodeURIComponent(url.toString())}`
+    ? `https://api.scraperapi.com?api_key=${scraperKey}&url=${encodeURIComponent(url.toString())}&render=false&country_code=br&keep_headers=true`
     : url.toString();
 
   console.log(`[ML Search] token_type=${type} proxy=${!!scraperKey} url=${url.toString()}`);
 
-  const res = await fetch(fetchUrl, {
-    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
-    next: { revalidate: 60 },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+  let res: Response;
+  try {
+    res = await fetch(fetchUrl, {
+      signal: controller.signal,
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+      next: { revalidate: 60 },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const bodyText = await res.text();
   console.log(`[ML Search] Status: ${res.status} | Body início: ${bodyText.slice(0, 150)}`);

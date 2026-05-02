@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { buscarProdutos, setUserToken } from '@/lib/mercadolivre';
 import type { FiltrosBusca, ResultadoBusca } from '@/types/produto';
 
-export const runtime = 'edge';
-
-function parseCookies(header: string): Record<string, string> {
-  return Object.fromEntries(
-    header.split(';').flatMap((c) => {
-      const eq = c.indexOf('=');
-      if (eq < 0) return [];
-      return [[c.slice(0, eq).trim(), decodeURIComponent(c.slice(eq + 1).trim())]];
-    })
-  );
-}
+export const runtime = 'nodejs';
 
 async function tryRefresh(
   refreshToken: string
@@ -30,6 +21,7 @@ async function tryRefresh(
       client_secret: clientSecret,
       refresh_token: refreshToken,
     }),
+    cache: 'no-store',
   });
 
   if (!res.ok) return null;
@@ -58,14 +50,16 @@ export async function GET(req: NextRequest) {
     ordenacao: sort ?? 'score',
   };
 
-  // Lê tokens dos cookies do request (Edge não usa next/headers)
-  const cookieMap = parseCookies(req.headers.get('cookie') ?? '');
-  const cookieToken = cookieMap['ml_access_token'];
-  const cookieRefresh = cookieMap['ml_refresh_token'];
+  // Carrega token do cookie para memória antes de buscar
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get('ml_access_token')?.value;
+  const cookieRefresh = cookieStore.get('ml_refresh_token')?.value;
 
   if (cookieToken) setUserToken(cookieToken, 7200);
 
   console.log(`[API /search] query="${q}" limit=${limit} sort=${filtros.ordenacao} cookie_token=${!!cookieToken}`);
+
+  const secure = process.env.NODE_ENV === 'production';
 
   type RefreshedCookies = {
     access_token: string;
@@ -111,17 +105,17 @@ export async function GET(req: NextRequest) {
 
     // Atualiza cookies se o token foi renovado durante esta request
     if (refreshedCookies) {
-      response.cookies.set('ml_access_token', refreshedCookies.access_token, {
+      cookieStore.set('ml_access_token', refreshedCookies.access_token, {
         httpOnly: true,
-        secure: true,
+        secure,
         sameSite: 'lax',
         maxAge: refreshedCookies.expires_in,
         path: '/',
       });
       if (refreshedCookies.refresh_token) {
-        response.cookies.set('ml_refresh_token', refreshedCookies.refresh_token, {
+        cookieStore.set('ml_refresh_token', refreshedCookies.refresh_token, {
           httpOnly: true,
-          secure: true,
+          secure,
           sameSite: 'lax',
           maxAge: 60 * 60 * 24 * 180,
           path: '/',
@@ -133,7 +127,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const tempoMs = Date.now() - inicio;
     const msg = err instanceof Error ? err.message : String(err);
-    const mlBlocked = msg.includes('autorização') || msg.includes('403');
+    const mlBlocked = msg.includes('autorização') || msg.includes('403') || msg.includes('aborted');
     console.error(`[API /search] ✗ erro após ${tempoMs}ms (ml_blocked=${mlBlocked}):`, msg);
     return NextResponse.json(
       { error: msg, ml_blocked: mlBlocked },
