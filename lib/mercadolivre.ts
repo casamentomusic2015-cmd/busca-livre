@@ -171,9 +171,14 @@ export async function buscarProdutos(
     url.searchParams.set('sort', mlSort[filtros.ordenacao]);
   }
 
-  console.log(`[ML Search] token_type=${type} url=${url.toString()}`);
+  const scraperKey = process.env.SCRAPER_API_KEY;
+  const fetchUrl = scraperKey
+    ? `https://api.scraperapi.com?api_key=${scraperKey}&url=${encodeURIComponent(url.toString())}`
+    : url.toString();
 
-  const res = await fetch(url.toString(), {
+  console.log(`[ML Search] token_type=${type} proxy=${!!scraperKey} url=${url.toString()}`);
+
+  const res = await fetch(fetchUrl, {
     headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
     next: { revalidate: 60 },
   });
@@ -214,9 +219,14 @@ export async function buscarDetalhe(id: string): Promise<MLProduto> {
   const { token } = await getAccessToken();
   const url = `${ML_BASE_URL}/items/${id}`;
 
-  console.log('[ML Detalhe] URL:', url);
+  const scraperKey = process.env.SCRAPER_API_KEY;
+  const fetchUrl = scraperKey
+    ? `https://api.scraperapi.com?api_key=${scraperKey}&url=${encodeURIComponent(url)}`
+    : url;
 
-  const res = await fetch(url, {
+  console.log('[ML Detalhe] URL:', url, scraperKey ? '(via ScraperAPI)' : '');
+
+  const res = await fetch(fetchUrl, {
     headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
     next: { revalidate: 300 },
   });
