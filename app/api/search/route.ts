@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { buscarProdutos, setUserToken } from '@/lib/mercadolivre';
 import type { FiltrosBusca, ResultadoBusca } from '@/types/produto';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
-async function refreshCookieToken(
+function parseCookies(header: string): Record<string, string> {
+  return Object.fromEntries(
+    header.split(';').flatMap((c) => {
+      const eq = c.indexOf('=');
+      if (eq < 0) return [];
+      return [[c.slice(0, eq).trim(), decodeURIComponent(c.slice(eq + 1).trim())]];
+    })
+  );
+}
+
+async function tryRefresh(
   refreshToken: string
-): Promise<{ access_token: string; expires_in: number; refresh_token: string } | null> {
+): Promise<{ access_token: string; refresh_token: string; expires_in: number } | null> {
   const clientId = process.env.ML_CLIENT_ID;
   const clientSecret = process.env.ML_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
@@ -21,11 +30,10 @@ async function refreshCookieToken(
       client_secret: clientSecret,
       refresh_token: refreshToken,
     }),
-    cache: 'no-store',
   });
 
   if (!res.ok) return null;
-  return res.json() as Promise<{ access_token: string; expires_in: number; refresh_token: string }>;
+  return res.json() as Promise<{ access_token: string; refresh_token: string; expires_in: number }>;
 }
 
 export async function GET(req: NextRequest) {
@@ -50,49 +58,78 @@ export async function GET(req: NextRequest) {
     ordenacao: sort ?? 'score',
   };
 
-  // Carrega token do cookie para memória antes de buscar
-  const cookieStore = await cookies();
-  const cookieToken = cookieStore.get('ml_access_token')?.value;
+  // Lê tokens dos cookies do request (Edge não usa next/headers)
+  const cookieMap = parseCookies(req.headers.get('cookie') ?? '');
+  const cookieToken = cookieMap['ml_access_token'];
+  const cookieRefresh = cookieMap['ml_refresh_token'];
+
   if (cookieToken) setUserToken(cookieToken, 7200);
 
   console.log(`[API /search] query="${q}" limit=${limit} sort=${filtros.ordenacao} cookie_token=${!!cookieToken}`);
 
-  const secure = process.env.NODE_ENV === 'production';
+  type RefreshedCookies = {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+  } | null;
+
+  let refreshedCookies: RefreshedCookies = null;
 
   try {
-    let { produtos, total } = await buscarProdutos({ q, limit, filtros }).catch(async (err) => {
+    let searchResult: { produtos: ResultadoBusca['produtos']; total: number };
+
+    try {
+      searchResult = await buscarProdutos({ q, limit, filtros });
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // 401 → tenta renovar via refresh token do cookie
-      if (msg.includes('401')) {
-        const refreshToken = cookieStore.get('ml_refresh_token')?.value;
-        if (refreshToken) {
-          console.log('[API /search] 401 detectado, tentando renovar token via cookie...');
-          const refreshed = await refreshCookieToken(refreshToken);
-          if (refreshed) {
-            cookieStore.set('ml_access_token', refreshed.access_token, {
-              httpOnly: true, secure, sameSite: 'lax', maxAge: refreshed.expires_in, path: '/',
-            });
-            if (refreshed.refresh_token) {
-              cookieStore.set('ml_refresh_token', refreshed.refresh_token, {
-                httpOnly: true, secure, sameSite: 'lax', maxAge: 60 * 60 * 24 * 180, path: '/',
-              });
-            }
-            setUserToken(refreshed.access_token, refreshed.expires_in);
-            return buscarProdutos({ q, limit, filtros });
-          }
-        }
+      if (msg.includes('401') && cookieRefresh) {
+        console.log('[API /search] 401 — renovando token via cookie...');
+        const refreshed = await tryRefresh(cookieRefresh);
+        if (!refreshed) throw err;
+        setUserToken(refreshed.access_token, refreshed.expires_in);
+        refreshedCookies = refreshed;
+        searchResult = await buscarProdutos({ q, limit, filtros });
+      } else {
+        throw err;
       }
-      throw err;
-    });
+    }
 
     const tempoMs = Date.now() - inicio;
-    console.log(`[API /search] ✓ ${produtos.length} produtos em ${tempoMs}ms (total ML: ${total})`);
+    console.log(`[API /search] ✓ ${searchResult.produtos.length} produtos em ${tempoMs}ms (total ML: ${searchResult.total})`);
 
-    const resultado: ResultadoBusca = { produtos, total, query: q, tempoMs };
+    const resultado: ResultadoBusca = {
+      produtos: searchResult.produtos,
+      total: searchResult.total,
+      query: q,
+      tempoMs,
+    };
 
-    return NextResponse.json(resultado, {
+    const response = NextResponse.json(resultado, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
+
+    // Atualiza cookies se o token foi renovado durante esta request
+    if (refreshedCookies) {
+      response.cookies.set('ml_access_token', refreshedCookies.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        maxAge: refreshedCookies.expires_in,
+        path: '/',
+      });
+      if (refreshedCookies.refresh_token) {
+        response.cookies.set('ml_refresh_token', refreshedCookies.refresh_token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 180,
+          path: '/',
+        });
+      }
+    }
+
+    return response;
   } catch (err) {
     const tempoMs = Date.now() - inicio;
     const msg = err instanceof Error ? err.message : String(err);

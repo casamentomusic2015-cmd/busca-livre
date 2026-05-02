@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { setUserToken } from '@/lib/mercadolivre';
 
+export const runtime = 'edge';
+
 export async function POST() {
   const cookieStore = await cookies();
   const refreshToken = cookieStore.get('ml_refresh_token')?.value;
