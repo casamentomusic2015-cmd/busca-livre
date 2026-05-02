@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { setUserToken } from '@/lib/mercadolivre';
 
 export async function GET(req: NextRequest) {
@@ -64,48 +65,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Falha ao trocar code por token', detail: data }, { status: 502 });
     }
 
-    // Armazena o token em memória para uso imediato
+    // Persiste os tokens em cookies HTTP-only
+    const cookieStore = await cookies();
+    const secure = process.env.NODE_ENV === 'production';
+
+    cookieStore.set('ml_access_token', data.access_token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: data.expires_in,
+      path: '/',
+    });
+
+    cookieStore.set('ml_refresh_token', data.refresh_token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 180,
+      path: '/',
+    });
+
+    // Também armazena em memória para uso imediato nesta instância
     setUserToken(data.access_token, data.expires_in);
 
     console.log('[Auth] ✓ Token de usuário obtido! user_id:', data.user_id);
-    console.log('[Auth] Refresh token (salve no .env.local como ML_REFRESH_TOKEN):');
-    console.log('[Auth]', data.refresh_token);
 
-    // Retorna página HTML com instruções
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Autorização concluída — Busca Livre</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
-    .card { background: #141414; border: 1px solid #2a2a2a; border-radius: 1rem; padding: 2rem; max-width: 600px; width: 100%; }
-    h1 { color: #FFE600; font-size: 1.5rem; margin-bottom: 0.5rem; }
-    p { color: #888; margin-bottom: 1rem; line-height: 1.6; }
-    .token { background: #0a0a0a; border: 1px solid #FFE600; border-radius: 0.5rem; padding: 1rem; font-family: monospace; font-size: 0.75rem; word-break: break-all; color: #FFE600; margin: 1rem 0; }
-    .step { background: #1a1a1a; border-radius: 0.5rem; padding: 1rem; margin-bottom: 0.5rem; }
-    .step strong { color: #FFE600; }
-    a { display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; background: #FFE600; color: #000; font-weight: bold; border-radius: 0.75rem; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>✓ Autorização concluída!</h1>
-    <p>Conta <strong style="color:#f5f5f5">@${data.user_id}</strong> vinculada com sucesso. O app já pode buscar produtos.</p>
-    <p>Para que o token persista entre reinicializações, adicione ao seu <code>.env.local</code>:</p>
-    <div class="token">ML_REFRESH_TOKEN=${data.refresh_token}</div>
-    <div class="step"><strong>Passo 1:</strong> Copie a linha acima e adicione ao arquivo <code>.env.local</code></div>
-    <div class="step"><strong>Passo 2:</strong> Reinicie o servidor com <code>npm run dev</code></div>
-    <a href="/">Ir para o app →</a>
-  </div>
-</body>
-</html>`;
-
-    return new Response(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
+    return NextResponse.redirect(`${appUrl}/?auth=success`);
   } catch (err) {
     console.error('[Auth] Erro:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

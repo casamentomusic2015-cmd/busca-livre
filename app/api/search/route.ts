@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buscarProdutos } from '@/lib/mercadolivre';
+import { cookies } from 'next/headers';
+import { buscarProdutos, setUserToken } from '@/lib/mercadolivre';
 import type { FiltrosBusca, ResultadoBusca } from '@/types/produto';
 
 export const runtime = 'nodejs';
+
+async function refreshCookieToken(
+  refreshToken: string
+): Promise<{ access_token: string; expires_in: number; refresh_token: string } | null> {
+  const clientId = process.env.ML_CLIENT_ID;
+  const clientSecret = process.env.ML_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+    cache: 'no-store',
+  });
+
+  if (!res.ok) return null;
+  return res.json() as Promise<{ access_token: string; expires_in: number; refresh_token: string }>;
+}
 
 export async function GET(req: NextRequest) {
   const inicio = Date.now();
@@ -26,10 +50,40 @@ export async function GET(req: NextRequest) {
     ordenacao: sort ?? 'score',
   };
 
-  console.log(`[API /search] query="${q}" limit=${limit} sort=${filtros.ordenacao}`);
+  // Carrega token do cookie para memória antes de buscar
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get('ml_access_token')?.value;
+  if (cookieToken) setUserToken(cookieToken, 7200);
+
+  console.log(`[API /search] query="${q}" limit=${limit} sort=${filtros.ordenacao} cookie_token=${!!cookieToken}`);
+
+  const secure = process.env.NODE_ENV === 'production';
 
   try {
-    const { produtos, total } = await buscarProdutos({ q, limit, filtros });
+    let { produtos, total } = await buscarProdutos({ q, limit, filtros }).catch(async (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 401 → tenta renovar via refresh token do cookie
+      if (msg.includes('401')) {
+        const refreshToken = cookieStore.get('ml_refresh_token')?.value;
+        if (refreshToken) {
+          console.log('[API /search] 401 detectado, tentando renovar token via cookie...');
+          const refreshed = await refreshCookieToken(refreshToken);
+          if (refreshed) {
+            cookieStore.set('ml_access_token', refreshed.access_token, {
+              httpOnly: true, secure, sameSite: 'lax', maxAge: refreshed.expires_in, path: '/',
+            });
+            if (refreshed.refresh_token) {
+              cookieStore.set('ml_refresh_token', refreshed.refresh_token, {
+                httpOnly: true, secure, sameSite: 'lax', maxAge: 60 * 60 * 24 * 180, path: '/',
+              });
+            }
+            setUserToken(refreshed.access_token, refreshed.expires_in);
+            return buscarProdutos({ q, limit, filtros });
+          }
+        }
+      }
+      throw err;
+    });
 
     const tempoMs = Date.now() - inicio;
     console.log(`[API /search] ✓ ${produtos.length} produtos em ${tempoMs}ms (total ML: ${total})`);
